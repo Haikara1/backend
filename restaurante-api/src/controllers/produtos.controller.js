@@ -1,26 +1,50 @@
-import produtos from "../data/produtos.js";
+import pool from "../config/database.js";
 
-export function listarProdutos(req, res) {
-    res.json(produtos);
-}
+export async function listarProdutos(req, res) {
+    try {
+        const resultado = await pool.query(
+            "SELECT * FROM produtos ORDER BY id"
+        );
 
-export function buscarProdutoPorId(req, res) {
-    const id = Number(req.params.id);
+        res.json(resultado.rows);
 
-    const produto = produtos.find(
-        produto => produto.id === id
-    );
+    } catch (error) {
+        console.error(error);
 
-    if (!produto) {
-        return res.status(404).json({
-            erro: "Produto não encontrado."
+        res.status(500).json({
+            erro: "Erro interno do servidor."
         });
     }
-
-    res.json(produto);
 }
 
-export function criarProduto(req, res) {
+export async function buscarProdutoPorId(req, res) {
+    const id = Number(req.params.id);
+
+    try {
+        const resultado = await pool.query(
+            "SELECT * FROM produtos WHERE id = $1",
+            [id]
+        );
+
+        const produto = resultado.rows[0];
+
+        if (!produto) {
+            return res.status(404).json({
+                erro: "Produto não encontrado."
+            });
+        }
+
+        res.json(produto);
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            erro: "Erro interno do servidor."
+        });
+    }
+}
+export async function criarProduto(req, res) {
     const { nome, categoria, preco } = req.body;
 
     if (!nome || !categoria || preco === undefined) {
@@ -35,31 +59,31 @@ export function criarProduto(req, res) {
         });
     }
 
-    const novoProduto = {
-        id: produtos.length + 1,
-        nome,
-        categoria,
-        preco
-    };
+    try {
+        const resultado = await pool.query(
+            `
+            INSERT INTO produtos (nome, categoria, preco)
+            VALUES ($1, $2, $3)
+            RETURNING *
+            `,
+            [nome, categoria, preco]
+        );
 
-    produtos.push(novoProduto);
+        const novoProduto = resultado.rows[0];
 
-    res.status(201).json(novoProduto);
-}
+        res.status(201).json(novoProduto);
 
-export function atualizarProduto(req, res) {
-    const id = Number(req.params.id);
+    } catch (error) {
+        console.error(error);
 
-    const produto = produtos.find(
-        produto => produto.id === id
-    );
-
-    if (!produto) {
-        return res.status(404).json({
-            erro: "Produto não encontrado."
+        res.status(500).json({
+            erro: "Erro interno do servidor."
         });
     }
+}
 
+export async function atualizarProduto(req, res) {
+    const id = Number(req.params.id);
     const { nome, categoria, preco } = req.body;
 
     if (preco !== undefined) {
@@ -70,37 +94,75 @@ export function atualizarProduto(req, res) {
         }
     }
 
-    if (nome !== undefined) {
-        produto.nome = nome;
-    }
+    try {
+        const resultado = await pool.query(
+            `
+            UPDATE produtos
+            SET
+                nome = COALESCE($1, nome),
+                categoria = COALESCE($2, categoria),
+                preco = COALESCE($3, preco)
+            WHERE id = $4
+            RETURNING *
+            `,
+            [
+                nome ?? null,
+                categoria ?? null,
+                preco ?? null,
+                id
+            ]
+        );
 
-    if (categoria !== undefined) {
-        produto.categoria = categoria;
-    }
+        const produtoAtualizado = resultado.rows[0];
 
-    if (preco !== undefined) {
-        produto.preco = preco;
-    }
+        if (!produtoAtualizado) {
+            return res.status(404).json({
+                erro: "Produto não encontrado."
+            });
+        }
 
-    res.json(produto);
-}
+        res.json(produtoAtualizado);
 
-export function removerProduto(req, res) {
-    const id = Number(req.params.id);
+    } catch (error) {
+        console.error(error);
 
-    const indice = produtos.findIndex(
-        produto => produto.id === id
-    );
-
-    if (indice === -1) {
-        return res.status(404).json({
-            erro: "Produto não encontrado."
+        res.status(500).json({
+            erro: "Erro interno do servidor."
         });
     }
+}
 
-    produtos.splice(indice, 1);
+export async function removerProduto(req, res) {
+    const id = Number(req.params.id);
 
-    res.status(200).json({
-        mensagem: "Produto removido com sucesso."
-    });
+    try {
+        const resultado = await pool.query(
+            `
+            DELETE FROM produtos
+            WHERE id = $1
+            RETURNING *
+            `,
+            [id]
+        );
+
+        const produtoRemovido = resultado.rows[0];
+
+        if (!produtoRemovido) {
+            return res.status(404).json({
+                erro: "Produto não encontrado."
+            });
+        }
+
+        res.status(200).json({
+            mensagem: "Produto removido com sucesso.",
+            produto: produtoRemovido
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            erro: "Erro interno do servidor."
+        });
+    }
 }
